@@ -139,13 +139,14 @@ class OpenAICompatibleClient:
             return "错误：调用语言模型服务时出错。"
 
 import re
-
+from dotenv import load_dotenv
+load_dotenv()
 # --- 1. 配置LLM客户端 ---
 # 请根据您使用的服务，将这里替换成对应的凭证和地址
-API_KEY = "YOUR_API_KEY"
-BASE_URL = "YOUR_BASE_URL"
-MODEL_ID = "YOUR_MODEL_ID"
-os.environ['TAVILY_API_KEY'] = "YOUR_TAVILY_API_KEY"
+API_KEY = os.getenv("LLM_API_KEY")
+BASE_URL = os.getenv("LLM_BASE_URL")
+MODEL_ID = os.getenv("LLM_MODEL")
+os.environ['TAVILY_API_KEY'] = os.getenv("TAVILY_API_KEY")
 
 llm = OpenAICompatibleClient(
     model=MODEL_ID,
