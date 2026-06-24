@@ -77,7 +77,14 @@ class MySimpleAgent(SimpleAgent):
                 print(f"🔧 检测到 {len(tool_calls)} 个工具调用")
                 # 执行所有工具调用并收集结果
                 tool_results = []
-                clean_response
+
+                clean_response = response
+
+                for call in tool_calls:
+                    result = self._execute_tool_call(call['tool_name'], call['parameters'])
+                    tool_results.append(result)
+                    # 从响应中移除工具调用标记
+                    clean_response =
     def _parse_tool_calls(self, text: str) -> list:
         """解析文本中的工具调用"""
         pattern = r'\[TOOL_CALL:([^:]+):([^\]]+)\]'
@@ -90,3 +97,64 @@ class MySimpleAgent(SimpleAgent):
                 "original": f'[TOOL_CALL:{tool_name}:{parameters}]'
             })
         return tool_calls
+
+    def _execute_tool_call(self, tool_name: str, parameters: str) -> str:
+        """执行工具调用"""
+        if not self.tool_registry:
+            return f"错误，未配置工具注册表"
+
+        try:
+            # 智能参数解析
+            if tool_name == 'calculator':
+                # 计算器工具直接传入表达式
+                result = self.tool_registry.execute_tool(tool_name, parameters)
+            else:
+                # 其他工具使用智能参数解析
+                param_dict = self._parse_tool_parameters(tool_name, parameters)
+                tool = self.tool_registry.get_tool(tool_name)
+                if not tool:
+                    return f"错误：未找到工具'{tool_name}'"
+                result = tool.run(param_dict)
+            return f"工具{tool_name}执行结果:\n{result}"
+        except Exception as e:
+            return f"工具调用失败:{str(e)}"
+    def _parse_tool_parameters(self, tool_name: str, parameters: str) -> dict:
+        """智能解析工具参数"""
+        param_dict = {}
+        if '=' in parameters:
+            # 格式:key = value 或 action = search, query = Python
+            if ',' in parameters:
+                # 多个参数：action = search, query = Python, limit = 3
+                pairs = parameters.split(',')
+                for pair in pairs:
+                    if '=' in pair:
+                        key, value = pair.split('=', 1)
+                        param_dict[key.strip()] = value.strip()
+            else:
+                # 单个参数：key = value
+                key, value = parameters.split('=', 1)
+                param_dict[key.strip()] = value.strip()
+        else:
+            # 直接传入参数，更具工具类型智能推断
+            if tool_name == 'search':
+                param_dict = {'query': parameters}
+            elif tool_name == 'memory':
+                param_dict = {'action': 'search', 'query': parameters}
+            else:
+                param_dict = {'input': parameters}
+
+        return param_dict
+
+    def stream_run(self, input_text: str, **kwargs) -> Iterator[str]:
+        """
+        自定义流式运行方法
+        """
+        print(f"{self.name} 开始流式处理:")
+
+        messages = []
+
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+
+        for msg in self._history:
+            messages.append({"role": msg.role, "content": msg.content})
