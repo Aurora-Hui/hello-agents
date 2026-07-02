@@ -36,6 +36,12 @@ class MySimpleAgent(SimpleAgent):
         # 添加系统消息 （可能包含工具信息）
         enhanced_system_prompt = self.__get_enhanced_system_prompt(input_text)
 
+        # 添加历史消息
+        for msg in self._history:
+            messages.append({"role":"user", "content": msg.content})
+
+        # 添加当前用户消息
+        messages.append({"role":"user", "content": input_text})
     def _get_enhanced_system_prompt(self) -> str:
         """构建增强的系统提示词，包含工具信息"""
         base_prompt = self.system_prompt or "你是一个有用的AI助手"
@@ -84,7 +90,32 @@ class MySimpleAgent(SimpleAgent):
                     result = self._execute_tool_call(call['tool_name'], call['parameters'])
                     tool_results.append(result)
                     # 从响应中移除工具调用标记
-                    clean_response =
+                    clean_response = clean_response.replace(call['original'], "")
+
+                # 构建包含工具结果的消息
+                messages.append({"role": "assistant", "content": clean_response})
+
+                # 添加工具结果
+                tool_results_txt = "\n\n".join(tool_results)
+                messages.append({"role": "user", "content": tool_results_txt})
+                current_iteration += 1
+                continue
+
+            # 没有工具调用，这是最终答案
+            final_response = response
+            break
+
+        # 如果超过最大迭代次数，而且没有答案 则获取最后一次回答
+        if current_iteration >= max_tool_iterations and not final_response:
+            final_response = self.llm.invoke(messages, **kwargs)
+
+        # 保存到历史
+        self.add_message(Message(input_txet, "user"))
+        self.add_message(Message(final_response, "assistant"))
+        print(f"{self.name} 响应完成")
+
+        return final_response
+
     def _parse_tool_calls(self, text: str) -> list:
         """解析文本中的工具调用"""
         pattern = r'\[TOOL_CALL:([^:]+):([^\]]+)\]'
@@ -158,3 +189,29 @@ class MySimpleAgent(SimpleAgent):
 
         for msg in self._history:
             messages.append({"role": msg.role, "content": msg.content})
+
+    def add_tool(self, tool) -> None:
+        """添加工具到Agent(便利方法)"""
+        if not self.tool_registry:
+            self.tool_registry = ToolRegistry()
+            self.enable_tool_calling = True
+
+        self.tool_registry.register_tool(tool)
+        print(f"工具'{tool.name}'已添加")
+
+    def has_tools(self) -> bool:
+        """检查是否有可用工具"""
+        return self.enable_tool_calling and self.tool_registry is not None
+
+    def remove_tool(self, tool_name: str) -> bool:
+        """移除工具"""
+        if self.tool_registry:
+            self.tool_registry.unregister(tool_name)
+            return True
+        return False
+
+    def list_tools(self) -> list:
+        """列出所有可用工具"""
+        if self.tool_registry:
+            return self.tool_registry.list_tools()
+        return []
